@@ -50,6 +50,7 @@ import { queueAssignmentRouter } from "@/src/features/annotation-queues/server/a
 import { surveysRouter } from "@/src/server/api/routers/surveys";
 import { naturalLanguageFilterRouter } from "@/src/features/natural-language-filters/server/router";
 import { notificationPreferencesRouter } from "@/src/server/api/routers/notificationPreferences";
+import { optimizationRouter } from "@/src/features/optimization/server/optimizationRouter";
 
 /**
  * This is the primary router for your server.
@@ -78,6 +79,7 @@ export const appRouter = createTRPCRouter({
   cloudBilling: cloudBillingRouter,
   spendAlerts: spendAlertRouter,
   observations: observationsRouter,
+  optimization: optimizationRouter,
   prompts: promptRouter,
   models: modelRouter,
   evals: evalRouter,

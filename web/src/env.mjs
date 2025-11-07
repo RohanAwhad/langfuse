@@ -330,6 +330,10 @@ export const env = createEnv({
     LANGFUSE_ENABLE_EVENTS_TABLE_OBSERVATIONS: z
       .enum(["true", "false"])
       .default("false"),
+
+    // Inference Time Scaling (ITS-Hub) optimization
+    ITS_HUB_URL: z.string().url().default("http://localhost:8108"),
+    PORTKEY_GATEWAY_URL: z.string().url().default("http://localhost:8787"),
   },
 
   /**

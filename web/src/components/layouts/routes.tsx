@@ -18,6 +18,7 @@ import {
   SquarePercent,
   ClipboardPen,
   Clock,
+  Zap,
 } from "lucide-react";
 import { type ReactNode } from "react";
 import { type Entitlement } from "@/src/features/entitlements/constants/entitlements";
@@ -39,6 +40,7 @@ export enum RouteGroup {
   Observability = "Observability",
   PromptManagement = "Prompt Management",
   Evaluation = "Evaluation",
+  Optimization = "Optimization",
 }
 
 export type Route = {
@@ -166,6 +168,13 @@ export const ROUTES: Route[] = [
     icon: Database,
     productModule: "datasets",
     group: RouteGroup.Evaluation,
+    section: RouteSection.Main,
+  },
+  {
+    title: "Inference Time Scaling",
+    pathname: `/project/[projectId]/optimization/inference-time-scaling`,
+    icon: Zap,
+    group: RouteGroup.Optimization,
     section: RouteSection.Main,
   },
   {
