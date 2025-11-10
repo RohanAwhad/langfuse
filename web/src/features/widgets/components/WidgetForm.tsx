@@ -6,6 +6,8 @@ import {
   CardTitle,
   CardFooter,
 } from "@/src/components/ui/card";
+import { Alert, AlertDescription } from "@/src/components/ui/alert";
+import { Info } from "lucide-react";
 import { api } from "@/src/utils/api";
 import {
   metricAggregations,
@@ -54,6 +56,7 @@ import {
   Table,
   Plus,
   X,
+  ScatterChart,
 } from "lucide-react";
 import {
   buildWidgetName,
@@ -71,6 +74,7 @@ type ChartType = {
   value: DashboardWidgetChartType;
   icon: React.ElementType;
   supportsBreakdown: boolean;
+  supportsRawData: boolean; // Whether this chart type can display unaggregated data (aggregation: "none")
 };
 
 import { type WidgetChartConfig } from "@/src/features/widgets/utils";
@@ -84,6 +88,7 @@ const chartTypes: ChartType[] = [
     value: "NUMBER",
     icon: Hash,
     supportsBreakdown: false,
+    supportsRawData: true, // Can show a single value from raw data
   },
   {
     group: "time-series",
@@ -91,6 +96,7 @@ const chartTypes: ChartType[] = [
     value: "LINE_TIME_SERIES",
     icon: LineChart,
     supportsBreakdown: true,
+    supportsRawData: false, // Requires time-bucketed aggregation
   },
   {
     group: "time-series",
@@ -98,6 +104,7 @@ const chartTypes: ChartType[] = [
     value: "BAR_TIME_SERIES",
     icon: BarChart,
     supportsBreakdown: true,
+    supportsRawData: false, // Requires time-bucketed aggregation
   },
   {
     group: "total-value",
@@ -105,6 +112,7 @@ const chartTypes: ChartType[] = [
     value: "HORIZONTAL_BAR",
     icon: BarChartHorizontal,
     supportsBreakdown: true,
+    supportsRawData: false, // Requires grouped aggregation
   },
   {
     group: "total-value",
@@ -112,6 +120,7 @@ const chartTypes: ChartType[] = [
     value: "VERTICAL_BAR",
     icon: BarChart,
     supportsBreakdown: true,
+    supportsRawData: true, // Can display individual values
   },
   {
     group: "total-value",
@@ -119,6 +128,7 @@ const chartTypes: ChartType[] = [
     value: "HISTOGRAM",
     icon: BarChart3,
     supportsBreakdown: false,
+    supportsRawData: false, // Requires histogram aggregation function
   },
   {
     group: "total-value",
@@ -126,6 +136,7 @@ const chartTypes: ChartType[] = [
     value: "PIE",
     icon: PieChart,
     supportsBreakdown: true,
+    supportsRawData: false, // Not meaningful for thousands of raw values
   },
   {
     group: "total-value",
@@ -133,8 +144,38 @@ const chartTypes: ChartType[] = [
     value: "PIVOT_TABLE",
     icon: Table,
     supportsBreakdown: true,
+    supportsRawData: false, // Designed for aggregated, grouped data
+  },
+  {
+    group: "total-value",
+    name: "Scatter Plot",
+    value: "SCATTER_PLOT",
+    icon: ScatterChart,
+    supportsBreakdown: false,
+    supportsRawData: true, // Primary chart type for raw/unaggregated data
   },
 ];
+
+/**
+ * Helper function to filter chart types based on whether we're using raw/unaggregated data
+ * @param chartTypes - All available chart types
+ * @param isRawData - Whether the current selection uses aggregation: "none"
+ * @returns Filtered chart types that are compatible with the current aggregation mode
+ */
+function getCompatibleChartTypes(
+  chartTypes: ChartType[],
+  isRawData: boolean,
+): ChartType[] {
+  return chartTypes.filter((chart) => {
+    // If using raw data (aggregation: "none"), only show charts that support it
+    if (isRawData) {
+      return chart.supportsRawData;
+    }
+    // If using aggregated data, hide raw-data-only charts (currently none)
+    // and show all aggregation-compatible charts
+    return true;
+  });
+}
 
 /**
  * Interface for representing a selected metric combination
@@ -628,6 +669,36 @@ export function WidgetForm({
     }
   }, [selectedMeasure, selectedAggregation, selectedChartType]);
 
+  // Auto-set aggregation to "none" for raw measures (rawValue, rawStringValue)
+  useEffect(() => {
+    const isRawMeasure =
+      selectedMeasure === "rawValue" || selectedMeasure === "rawStringValue";
+
+    if (isRawMeasure && selectedAggregation !== "none") {
+      setSelectedAggregation("none");
+    }
+  }, [selectedMeasure, selectedAggregation]);
+
+  // Auto-switch chart type when aggregation changes to/from "none" (raw data)
+  useEffect(() => {
+    const currentChart = chartTypes.find((c) => c.value === selectedChartType);
+    if (!currentChart) return;
+
+    const isRawData = selectedAggregation === "none";
+
+    // If switching to raw data and current chart doesn't support it
+    if (isRawData && !currentChart.supportsRawData) {
+      // Switch to SCATTER_PLOT as the primary raw data visualization
+      setSelectedChartType("SCATTER_PLOT");
+    }
+    // If switching from raw data to aggregated and current chart only supports raw
+    // (Currently no charts are raw-data-only, but adding for future-proofing)
+    else if (!isRawData && !currentChart.supportsRawData) {
+      // Switch to a default aggregated chart
+      setSelectedChartType("VERTICAL_BAR");
+    }
+  }, [selectedAggregation, selectedChartType]);
+
   // Get available metrics for the selected view
   const availableMetrics = useMemo(() => {
     const viewDeclaration = viewDeclarations[selectedView];
@@ -680,8 +751,21 @@ export function WidgetForm({
     metricIndex: number,
     measureKey: string,
   ): z.infer<typeof metricAggregations>[] => {
+    // Filter aggregations based on measure type
+    const isRawMeasure =
+      measureKey === "rawValue" || measureKey === "rawStringValue";
+
+    let availableAggregations = metricAggregations.options.filter((agg) => {
+      // For raw measures, only allow "none" aggregation
+      if (isRawMeasure) {
+        return agg === "none";
+      }
+      // For non-raw measures, exclude "none" aggregation
+      return agg !== "none";
+    }) as z.infer<typeof metricAggregations>[];
+
     if (selectedChartType === "PIVOT_TABLE" && measureKey) {
-      return metricAggregations.options.filter(
+      return availableAggregations.filter(
         (agg) =>
           !selectedMetrics.some(
             (m, idx) =>
@@ -689,9 +773,9 @@ export function WidgetForm({
               m.measure === measureKey &&
               m.aggregation === agg,
           ),
-      ) as z.infer<typeof metricAggregations>[];
+      );
     }
-    return metricAggregations.options as z.infer<typeof metricAggregations>[];
+    return availableAggregations;
   };
 
   // Get available metrics for a specific metric index in pivot tables
@@ -1322,39 +1406,72 @@ export function WidgetForm({
                         })}
                       </SelectContent>
                     </Select>
-                    {selectedMeasure !== "count" && (
-                      <div className="space-y-1">
-                        <Select
-                          value={selectedAggregation}
-                          disabled={selectedChartType === "HISTOGRAM"} // Disable when histogram chart type is selected
-                          onValueChange={(value) =>
-                            setSelectedAggregation(
-                              value as z.infer<typeof metricAggregations>,
-                            )
-                          }
-                        >
-                          <SelectTrigger id="aggregation-select">
-                            <SelectValue placeholder="Select Aggregation" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {metricAggregations.options.map((aggregation) => (
-                              <SelectItem key={aggregation} value={aggregation}>
-                                {startCase(aggregation)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {selectedChartType === "HISTOGRAM" && (
-                          <p className="text-xs text-muted-foreground">
-                            Aggregation is automatically set to
-                            &quot;histogram&quot; for histogram charts
-                          </p>
-                        )}
-                      </div>
-                    )}
+                    {selectedMeasure !== "count" &&
+                      selectedMeasure !== "rawValue" &&
+                      selectedMeasure !== "rawStringValue" && (
+                        <div className="space-y-1">
+                          <Select
+                            value={selectedAggregation}
+                            disabled={selectedChartType === "HISTOGRAM"} // Disable when histogram chart type is selected
+                            onValueChange={(value) =>
+                              setSelectedAggregation(
+                                value as z.infer<typeof metricAggregations>,
+                              )
+                            }
+                          >
+                            <SelectTrigger id="aggregation-select">
+                              <SelectValue placeholder="Select Aggregation" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {metricAggregations.options
+                                .filter((aggregation) => {
+                                  const isRawMeasure =
+                                    selectedMeasure === "rawValue" ||
+                                    selectedMeasure === "rawStringValue";
+                                  // For raw measures, only show "none"
+                                  if (isRawMeasure) {
+                                    return aggregation === "none";
+                                  }
+                                  // For non-raw measures, exclude "none"
+                                  return aggregation !== "none";
+                                })
+                                .map((aggregation) => (
+                                  <SelectItem
+                                    key={aggregation}
+                                    value={aggregation}
+                                  >
+                                    {startCase(aggregation)}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedChartType === "HISTOGRAM" && (
+                            <p className="text-xs text-muted-foreground">
+                              Aggregation is automatically set to
+                              &quot;histogram&quot; for histogram charts
+                            </p>
+                          )}
+                        </div>
+                      )}
                   </div>
                 )}
               </div>
+
+              {/* Raw Data Help Text */}
+              {selectedAggregation === "none" && (
+                <Alert className="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950">
+                  <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <AlertDescription className="text-sm text-blue-900 dark:text-blue-100">
+                    <strong>Raw/Unaggregated Data:</strong> You&apos;re viewing
+                    individual data points without aggregation. To improve
+                    performance and readability, it&apos;s{" "}
+                    <strong>strongly recommended</strong> to add filters below
+                    (e.g., filter by &quot;Score Name&quot; to focus on a
+                    specific metric like &quot;helpfulness&quot;). Available
+                    chart types: Scatter Plot, Vertical Bar Chart, Big Number.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Filters Section */}
               <div className="space-y-2">
@@ -1599,7 +1716,10 @@ export function WidgetForm({
                   <SelectContent>
                     <SelectGroup>
                       <SelectLabel>Time Series</SelectLabel>
-                      {chartTypes
+                      {getCompatibleChartTypes(
+                        chartTypes,
+                        selectedAggregation === "none",
+                      )
                         .filter((item) => item.group === "time-series")
                         .map((chart) => (
                           <SelectItem key={chart.value} value={chart.value}>
@@ -1614,7 +1734,10 @@ export function WidgetForm({
                     </SelectGroup>
                     <SelectGroup>
                       <SelectLabel>Total Value</SelectLabel>
-                      {chartTypes
+                      {getCompatibleChartTypes(
+                        chartTypes,
+                        selectedAggregation === "none",
+                      )
                         .filter((item) => item.group === "total-value")
                         .map((chart) => (
                           <SelectItem key={chart.value} value={chart.value}>
