@@ -72,7 +72,6 @@ import { datasetDeleteProcessor } from "./queues/datasetDelete";
 import { otelIngestionQueueProcessor } from "./queues/otelIngestionQueue";
 import { eventPropagationProcessor } from "./queues/eventPropagationQueue";
 import { notificationQueueProcessor } from "./queues/notificationQueue";
-import { optimizationQueueProcessor } from "./queues/optimizationQueue";
 
 const app = express();
 
@@ -513,15 +512,9 @@ if (env.QUEUE_CONSUMER_NOTIFICATION_QUEUE_IS_ENABLED === "true") {
   );
 }
 
-if (env.QUEUE_CONSUMER_OPTIMIZATION_QUEUE_IS_ENABLED === "true") {
-  WorkerManager.register(
-    QueueName.OptimizationQueue,
-    optimizationQueueProcessor,
-    {
-      concurrency: 1, // Process 1 optimization job at a time (long-running Python script)
-    },
-  );
-}
+// Optimization queue processor removed - now handled by Python worker (wxo-agent-evaluation package)
+// See: wxo-agent-evaluation/src/wxo_agentic_evaluation/worker/
+// The Python worker consumes jobs from the same optimization-queue
 
 process.on("SIGINT", () => onShutdown("SIGINT"));
 process.on("SIGTERM", () => onShutdown("SIGTERM"));
